@@ -1,0 +1,7 @@
+-cp .
+-cp src
+-cp ../..
+
+-m Test
+-D hl_ver=1.15.0
+-hl test.hl

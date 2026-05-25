@@ -1,0 +1,7 @@
+{
+	"name": "hlfreetype",
+	"license": "MIT",
+	"contributors": ["dtwotwo"],
+	"version": "1.0.0",
+	"classPath": "."
+}

@@ -1,0 +1,25 @@
+{
+	"[haxe]": {
+		"editor.formatOnSave": true,
+		"editor.formatOnPaste": true,
+		"editor.defaultFormatter": "nadako.vshaxe"
+	},
+
+	"editor.detectIndentation": false,
+	"editor.insertSpaces": false,
+	"editor.tabSize": 4,
+	"editor.trimAutoWhitespace": true,
+
+	"files.trimTrailingWhitespace": true,
+	"files.trimFinalNewlines": true,
+	"files.eol": "\n",
+
+	"haxe.enableCompilationServer": false,
+	"haxe.displayPort": "auto",
+	"haxe.enableServerView": true,
+	"haxe.disableInlineValue": true,
+
+	"haxecheckstyle.configurationFile": "checkstyle.json",
+	"haxecheckstyle.sourceFolders": ["freetype", "tests"],
+	"haxecheckstyle.codeSimilarityBufferSize": 100
+}

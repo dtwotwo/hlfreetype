@@ -1,0 +1,180 @@
+name: Build
+
+on:
+  workflow_dispatch:
+  push:
+  pull_request:
+  release:
+    types:
+      - published
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: Build native
+    runs-on: windows-2025-vs2026
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6.0.2
+
+      - name: Set up MSVC
+        uses: vln-devsecops/actions-msvc@release/v1
+        with:
+          arch: x64
+
+      - name: Download HashLink
+        shell: pwsh
+        run: |
+          $release = Invoke-RestMethod -Uri 'https://api.github.com/repos/HaxeFoundation/hashlink/releases/latest'
+          $asset = $release.assets | Where-Object { $_.name -like 'hashlink-*-win.zip' } | Select-Object -First 1
+          if (-not $asset) {
+            throw 'Could not find a Windows HashLink release asset.'
+          }
+
+          Invoke-WebRequest -Uri $asset.browser_download_url -OutFile 'hashlink-win.zip'
+          Expand-Archive -LiteralPath 'hashlink-win.zip' -DestinationPath 'hashlink' -Force
+
+          $hashlinkDir = Get-ChildItem -Path 'hashlink' -Directory | Select-Object -First 1
+          if (-not $hashlinkDir) {
+            throw 'Could not locate the extracted HashLink directory.'
+          }
+
+          "HASHLINK=$($hashlinkDir.FullName)" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          "$($hashlinkDir.FullName)" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+
+      - name: Configure CMake
+        run: cmake --preset release
+
+      - name: Build release
+        run: cmake --build out/build/release --config Release
+
+      - name: Stage native build
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path 'dist/native' | Out-Null
+          Copy-Item 'out/build/release/extension/freetype.hdll' 'dist/native/freetype.hdll'
+          Copy-Item 'out/build/release/extension/freetype.lib' 'dist/native/freetype.lib'
+
+      - name: Save native build
+        uses: actions/cache/save@v5.0.5
+        with:
+          path: dist/native
+          key: ${{ runner.os }}-hlfreetype-native-${{ github.run_id }}-${{ github.run_attempt }}
+
+  test:
+    name: Test Haxe ${{ matrix.haxe-version }}
+    needs: build
+    runs-on: windows-2025-vs2026
+
+    strategy:
+      fail-fast: false
+      matrix:
+        haxe-version: ["4.3.7", "latest"]
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6.0.2
+
+      - name: Set up Haxe
+        uses: krdlab/setup-haxe@master
+        with:
+          haxe-version: ${{ matrix.haxe-version }}
+
+      - name: Download HashLink
+        shell: pwsh
+        run: |
+          $release = Invoke-RestMethod -Uri 'https://api.github.com/repos/HaxeFoundation/hashlink/releases/latest'
+          $asset = $release.assets | Where-Object { $_.name -like 'hashlink-*-win.zip' } | Select-Object -First 1
+          if (-not $asset) {
+            throw 'Could not find a Windows HashLink release asset.'
+          }
+
+          Invoke-WebRequest -Uri $asset.browser_download_url -OutFile 'hashlink-win.zip'
+          Expand-Archive -LiteralPath 'hashlink-win.zip' -DestinationPath 'hashlink' -Force
+
+          $hashlinkDir = Get-ChildItem -Path 'hashlink' -Directory | Select-Object -First 1
+          if (-not $hashlinkDir) {
+            throw 'Could not locate the extracted HashLink directory.'
+          }
+
+          "HASHLINK=$($hashlinkDir.FullName)" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          "$($hashlinkDir.FullName)" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+
+      - name: Restore native build
+        uses: actions/cache/restore@v5.0.5
+        with:
+          path: dist/native
+          key: ${{ runner.os }}-hlfreetype-native-${{ github.run_id }}-${{ github.run_attempt }}
+
+      - name: Stage test native files
+        shell: pwsh
+        run: Copy-Item 'dist/native/freetype.hdll' 'tests/testMain/freetype.hdll' -Force
+
+      - name: Compile HL tests
+        working-directory: tests/testMain
+        run: |
+          haxe --version
+          haxe test-hl.hxml
+
+      - name: Run HL tests
+        working-directory: tests/testMain
+        run: |
+          hl --version
+          hl test.hl
+
+  package:
+    name: Package release
+    needs: test
+    runs-on: windows-2025-vs2026
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6.0.2
+
+      - name: Restore native build
+        uses: actions/cache/restore@v5.0.5
+        with:
+          path: dist/native
+          key: ${{ runner.os }}-hlfreetype-native-${{ github.run_id }}-${{ github.run_attempt }}
+
+      - name: Verify packaged files
+        shell: pwsh
+        run: |
+          if (-not (Test-Path 'dist/native/freetype.hdll')) {
+            throw 'Missing dist/native/freetype.hdll'
+          }
+          if (-not (Test-Path 'dist/native/freetype.lib')) {
+            throw 'Missing dist/native/freetype.lib'
+          }
+
+      - name: Create release zip
+        shell: pwsh
+        run: |
+          if (Test-Path 'hlfreetype-windows.zip') {
+            Remove-Item 'hlfreetype-windows.zip' -Force
+          }
+          Compress-Archive -Path 'dist/native/*' -DestinationPath 'hlfreetype-windows.zip'
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: hlfreetype-windows
+          path: hlfreetype-windows.zip
+
+      - name: Update nightly release
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        uses: andelf/nightly-release@main
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag_name: nightly
+          name: Nightly Release
+          body: |
+            Automated nightly Windows build of `hlfreetype`.
+
+            Download `hlfreetype-windows.zip` and extract it where you want to keep the native files.
+          files: |
+            hlfreetype-windows.zip

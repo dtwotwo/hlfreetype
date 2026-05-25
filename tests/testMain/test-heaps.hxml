@@ -1,0 +1,9 @@
+-cp .
+-cp src
+-cp ../..
+-lib heaps
+-lib hlsdl
+-D heaps
+
+-m TestHeaps
+-hl test-heaps.hl

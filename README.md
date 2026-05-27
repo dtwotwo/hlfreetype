@@ -1,5 +1,7 @@
 # hlfreetype
 
+> This library was inspired by [Motion Twin's original HashLink FreeType binding](https://github.com/motion-twin/hlfreetype)
+
 Native FreeType support for HashLink, with optional Heaps font integration.
 
 ## What it does
@@ -12,6 +14,7 @@ Native FreeType support for HashLink, with optional Heaps font integration.
 ## Supported formats
 
 - `ttf`
+- `ttc` **(WIP)**
 - `otf`
 
 ## Plain HashLink usage

@@ -16,18 +16,21 @@ class Bitmap {
 
 	public var pixelMode(get, never):PixelMode;
 
+	@:noCompletion
 	inline function get_pixelMode():PixelMode {
 		return @:privateAccess new PixelMode(pixelModeValue);
 	}
 
 	public var height(get, never):Int;
 
+	@:noCompletion
 	inline function get_height():Int {
 		return rows;
 	}
 
 	public var byteLength(get, never):Int;
 
+	@:noCompletion
 	inline function get_byteLength():Int {
 		return rows * (pitch < 0 ? -pitch : pitch);
 	}

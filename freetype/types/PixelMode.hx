@@ -1,7 +1,7 @@
 package freetype.types;
 
 enum abstract PixelMode(Int) to Int {
-	function new(value:Int) {
+	private function new(value:Int) {
 		this = value;
 	}
 

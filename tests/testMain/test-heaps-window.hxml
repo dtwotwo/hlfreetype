@@ -3,6 +3,7 @@
 -cp ../..
 -lib heaps
 -lib hlsdl
+-D windowSize=1280x720
 -D heaps
 
 -m TestHeapsWindow

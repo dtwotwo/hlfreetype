@@ -15,8 +15,8 @@ typedef FixtureIssue = {
 }
 
 class TestSupport {
-	public static final fixtures = loadFixtures();
 	public static final supportedExtensions = ["ttf", "otf"];
+	public static final fixtures = loadFixtures();
 
 	static function loadFixtures():Array<String> {
 		final explicitPath = Sys.getEnv("HLFREETYPE_TEST_FONT");
@@ -51,7 +51,8 @@ class TestSupport {
 			final path = dir + "/" + name;
 			if (FileSystem.isDirectory(path))
 				continue;
-			if (supportedExtensions.indexOf(Path.extension(name).toLowerCase()) != -1)
+			final ext = Path.extension(name);
+			if (ext != null && supportedExtensions.indexOf(ext.toLowerCase()) != -1)
 				result.push(path);
 		}
 		result.sort(Reflect.compare);
@@ -98,8 +99,8 @@ class TestSupport {
 	}
 
 	public static function classifyIssue(path:String, message:String):String {
-		final ext = Path.extension(path).toLowerCase();
-		if (supportedExtensions.indexOf(ext) == -1)
+		final ext = Path.extension(path);
+		if (ext == null || supportedExtensions.indexOf(ext.toLowerCase()) == -1)
 			return "unsupported";
 		return "fail";
 	}

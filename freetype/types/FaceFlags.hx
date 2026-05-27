@@ -21,7 +21,7 @@ enum abstract FaceFlags(Int) to Int {
 
 	@:op(a & b) static function and(a:FaceFlags, b:FaceFlags):FaceFlags;
 
-	function new(value:Int) {
+	private function new(value:Int) {
 		this = value;
 	}
 

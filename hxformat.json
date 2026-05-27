@@ -3,7 +3,7 @@
 		"leftCurly": "after",
 		"rightCurly": "after",
 		"emptyCurly": "noBreak",
-		"objectLiteralCurly": {"leftCurly": "after"}
+		"objectLiteralCurly": { "leftCurly": "after" }
 	},
 	"sameLine": {
 		"ifElse": "same",
@@ -25,7 +25,7 @@
 			"defaultLocation": "afterLast",
 			"rules": [
 				{
-					"conditions": [{"cond": "anyItemLength >= n", "value": 250}],
+					"conditions": [{ "cond": "anyItemLength >= n", "value": 250 }],
 					"type": "keep"
 				}
 			]

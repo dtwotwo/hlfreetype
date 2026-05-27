@@ -82,6 +82,9 @@ final font = freetype.heaps.FreeTypeFont.fromFiles([
 `fromFiles()` bakes one atlas and chooses the first font that contains each requested character.
 It does not magically cover all Unicode; the provided font files must contain the glyphs you want to render.
 
+Use `dynamicFromFiles()` when text can contain characters that were not known up front.
+Characters listed in `chars` are preloaded, and later missing glyphs are rendered into the atlas on demand.
+
 Create from bytes:
 
 ```haxe

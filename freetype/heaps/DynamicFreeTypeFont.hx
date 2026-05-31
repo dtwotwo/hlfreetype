@@ -116,7 +116,7 @@ class DynamicFreeTypeFont extends Font {
 			return null;
 		}
 
-		final loadFlags = opt.antiAliasing ? LoadFlags.Default | LoadFlags.ForceAutohint : LoadFlags.Default | LoadFlags.ForceAutohint | LoadFlags.Monochrome;
+		final loadFlags = opt.antiAliasing ? LoadFlags.Default | LoadFlags.NoHinting : LoadFlags.Default | LoadFlags.NoHinting | LoadFlags.Monochrome;
 		final renderMode = opt.antiAliasing ? RenderMode.Normal : RenderMode.Mono;
 		final glyph = face.renderCodepoint(code, loadFlags, renderMode);
 		final entry:PackedGlyph = {

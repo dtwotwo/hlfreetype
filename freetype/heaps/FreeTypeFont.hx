@@ -107,7 +107,7 @@ class FreeTypeFont {
 
 	public static function renderGlyphs(faces:Array<Face>, chars:Array<Int>, opt:FreeTypeFontOptions):Array<PackedGlyph> {
 		final result = [];
-		final loadFlags = opt.antiAliasing ? LoadFlags.Default | LoadFlags.ForceAutohint : LoadFlags.Default | LoadFlags.ForceAutohint | LoadFlags.Monochrome;
+		final loadFlags = opt.antiAliasing ? LoadFlags.Default | LoadFlags.NoHinting : LoadFlags.Default | LoadFlags.NoHinting | LoadFlags.Monochrome;
 		final renderMode = opt.antiAliasing ? RenderMode.Normal : RenderMode.Mono;
 
 		for (code in chars) {

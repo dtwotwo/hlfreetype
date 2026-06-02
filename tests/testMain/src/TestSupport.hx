@@ -80,6 +80,18 @@ class TestSupport {
 		return Path.withoutDirectory(path);
 	}
 
+	public static function findTTCFixture():Null<String> {
+		for (path in [
+			"C:/Windows/Fonts/msyh.ttc",
+			"C:/Windows/Fonts/meiryo.ttc",
+			"C:/Windows/Fonts/msgothic.ttc",
+			"C:/Windows/Fonts/cambria.ttc"
+		])
+			if (FileSystem.exists(path))
+				return path;
+		return null;
+	}
+
 	public static function printCheck(label:String):Void {
 		Sys.println("CHECK " + label);
 	}

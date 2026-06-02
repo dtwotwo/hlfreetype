@@ -16,9 +16,25 @@ private function main() {
 	TestSupport.assert(atlas.font.lineHeight > 0, "Heaps font line height should be positive");
 	TestSupport.assert(atlas.font.baseLine > 0, "Heaps font baseline should be positive");
 	TestSupport.assert(atlas.pixels.width > 0 && atlas.pixels.height > 0, "Heaps font atlas should have pixels");
+	testTTCAtlas();
 	testDynamicGlyphGeneration(path);
 	Sys.println("HL Heaps tests passed.");
 	Sys.exit(0);
+}
+
+private function testTTCAtlas():Void {
+	final path = TestSupport.findTTCFixture();
+	if (path == null)
+		return;
+
+	Sys.println("CHECK heaps-ttc");
+	final atlas = FreeTypeFont.buildAtlasFromFiles([path], 24, {
+		chars: "A?",
+		uploadTexture: false,
+	});
+	TestSupport.assert(atlas.font.getChar("A".code) != null, "Heaps TTC font should contain A");
+	TestSupport.assert(atlas.font.getChar("?".code) != null, "Heaps TTC font should contain ?");
+	TestSupport.printOk("heaps-ttc");
 }
 
 private function testDynamicGlyphGeneration(path:String):Void {

@@ -37,6 +37,15 @@ private function main() {
 		TestSupport.printFail("invalid", message);
 	}
 
+	try {
+		testTTCCollection();
+	} catch (e) {
+		failed = true;
+		final message = Std.string(e);
+		issues.push({path: "ttc", message: message, kind: "fail"});
+		TestSupport.printFail("ttc", message);
+	}
+
 	if (failed) {
 		Sys.println("");
 		var failedCount = 0;
@@ -67,6 +76,7 @@ private function testTTFFace(bytes:Bytes, label:String):Void {
 	TestSupport.assert(library.version.length > 0, label + ": FreeType version should be available");
 	TestSupport.assert(face.familyName != null && face.familyName.length > 0, label + ": family name should be available");
 	TestSupport.assert(face.styleName != null && face.styleName.length > 0, label + ": style name should be available");
+	TestSupport.assert(face.faceCount > 0, label + ": face count should be positive");
 	TestSupport.assert(face.glyphCount > 0, label + ": glyph count should be positive");
 	TestSupport.assert(face.unitsPerEm > 0, label + ": units per em should be positive");
 	TestSupport.assert(face.hasGlyph("A".code), label + ": font should contain glyph A");
@@ -93,6 +103,27 @@ private function testTTFFace(bytes:Bytes, label:String):Void {
 
 	face.dispose();
 	library.dispose();
+}
+
+private function testTTCCollection():Void {
+	final path = TestSupport.findTTCFixture();
+	if (path == null)
+		return;
+
+	TestSupport.printCheck(TestSupport.fixtureLabel(path));
+	final library = new Library();
+	final bytes = sys.io.File.getBytes(path);
+	final first = library.loadFace(bytes, 0);
+	TestSupport.assert(first.faceCount > 1, path + ": TTC should expose multiple faces");
+
+	final second = library.loadFace(bytes, 1);
+	TestSupport.assert(second.familyName != null && second.familyName.length > 0, path + ": indexed TTC face should load");
+	TestSupport.assert(second.glyphCount > 0, path + ": indexed TTC face should expose glyphs");
+
+	first.dispose();
+	second.dispose();
+	library.dispose();
+	TestSupport.printOk("ttc");
 }
 
 private function testInvalidInput():Void {

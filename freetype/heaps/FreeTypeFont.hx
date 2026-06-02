@@ -8,17 +8,22 @@ import freetype.heaps.types.FontTypes.FreeTypeFontOptions;
 import freetype.heaps.types.FontTypes.FreeTypeFontSource;
 import freetype.heaps.types.FontTypes.PackedGlyph;
 import freetype.types.Bitmap;
+import freetype.types.FaceFlags;
 import freetype.types.Glyph;
 import freetype.types.LoadFlags;
 import freetype.types.RenderMode;
 import h2d.Font;
 import h2d.Tile;
+import h3d.mat.Data.Filter;
 import haxe.io.Bytes;
 import hxd.Pixels;
 import sys.io.File;
 
 @:access(h2d.Font)
+@:access(h2d.Tile)
 class FreeTypeFont {
+	public static inline final glyphClearColor = 0x00FFFFFF;
+
 	public static function fromFile(path:String, size:Int, ?options:FreeTypeFontOptions):Font {
 		return fromBytes(File.getBytes(path), size, options, path);
 	}
@@ -97,18 +102,21 @@ class FreeTypeFont {
 
 	public static function uniqueChars(chars:String):Array<Int> {
 		final result:Array<Int> = [];
+		final seen:Map<Int, Bool> = [];
 		for (i in 0...chars.length) {
 			final code = StringTools.fastCodeAt(chars, i);
-			if (result.indexOf(code) == -1)
-				result.push(code);
+			if (seen.exists(code))
+				continue;
+			seen.set(code, true);
+			result.push(code);
 		}
 		return result;
 	}
 
 	public static function renderGlyphs(faces:Array<Face>, chars:Array<Int>, opt:FreeTypeFontOptions):Array<PackedGlyph> {
 		final result = [];
-		final loadFlags = opt.antiAliasing ? LoadFlags.Default | LoadFlags.NoHinting : LoadFlags.Default | LoadFlags.NoHinting | LoadFlags.Monochrome;
-		final renderMode = opt.antiAliasing ? RenderMode.Normal : RenderMode.Mono;
+		final loadFlags = loadFlagsFor(opt);
+		final renderMode = renderModeFor(opt);
 
 		for (code in chars) {
 			final face = findGlyphFace(faces, code);
@@ -124,7 +132,7 @@ class FreeTypeFont {
 				w: glyph.bitmap.width + opt.padding * 2,
 				h: glyph.bitmap.height + opt.padding * 2,
 				advance: glyph.advanceX / 64,
-				width: glyphWidth(glyph),
+				width: glyphWidth(glyph, opt.padding),
 			});
 		}
 
@@ -203,24 +211,63 @@ class FreeTypeFont {
 		}
 	}
 
-	public static function glyphWidth(glyph:Glyph):Float {
-		return Math.max(glyph.advanceX / 64, glyph.bitmapLeft + glyph.bitmap.width);
+	public static function glyphWidth(glyph:Glyph, padding:Int = 0):Float {
+		return Math.max(glyph.advanceX / 64, glyph.bitmapLeft + glyph.bitmap.width + padding);
+	}
+
+	public static function loadFlagsFor(opt:FreeTypeFontOptions):LoadFlags {
+		return opt.antiAliasing ? LoadFlags.Default | LoadFlags.NoBitmap | LoadFlags.TargetNormal : LoadFlags.Default | LoadFlags.NoBitmap | LoadFlags.TargetMono
+			| LoadFlags.Monochrome;
+	}
+
+	public static function renderModeFor(opt:FreeTypeFontOptions):RenderMode {
+		return opt.antiAliasing ? RenderMode.Normal : RenderMode.Mono;
+	}
+
+	public static function atlasTile(pixels:Pixels, opt:FreeTypeFontOptions):Tile {
+		if (!opt.uploadTexture)
+			return new Tile(null, 0, 0, pixels.width, pixels.height);
+
+		final tile = Tile.fromPixels(pixels);
+		tile.getTexture().filter = opt.antiAliasing ? Filter.Linear : Filter.Nearest;
+		return tile;
 	}
 
 	public static function addKerning(glyphs:Array<PackedGlyph>, font:Font):Void {
-		for (right in glyphs) {
-			final rightChar = font.glyphs.get(right.code);
-			if (rightChar == null)
+		for (group in glyphsByFace(glyphs)) {
+			if (!group[0].face.flags.has(FaceFlags.Kerning))
 				continue;
 
-			for (left in glyphs) {
-				if (left.face != right.face)
+			for (right in group) {
+				final rightChar = font.glyphs.get(right.code);
+				if (rightChar == null)
 					continue;
-				final kerning = right.face.kerning(left.glyph.glyphIndex, right.glyph.glyphIndex);
-				if (kerning.x != 0)
-					rightChar.addKerning(left.code, Std.int(kerning.x / 64));
+
+				for (left in group) {
+					final kerning = right.face.kerning(left.glyph.glyphIndex, right.glyph.glyphIndex);
+					if (kerning.x != 0)
+						rightChar.addKerning(left.code, Std.int(kerning.x / 64));
+				}
 			}
 		}
+	}
+
+	static function glyphsByFace(glyphs:Array<PackedGlyph>):Array<Array<PackedGlyph>> {
+		final groups:Array<Array<PackedGlyph>> = [];
+		for (glyph in glyphs) {
+			var group:Array<PackedGlyph> = null;
+			for (candidate in groups)
+				if (candidate[0].face == glyph.face) {
+					group = candidate;
+					break;
+				}
+			if (group == null) {
+				group = [];
+				groups.push(group);
+			}
+			group.push(glyph);
+		}
+		return groups;
 	}
 
 	static function writeGrayGlyph(pixels:Pixels, bitmap:Bitmap, tx:Int, ty:Int):Void {

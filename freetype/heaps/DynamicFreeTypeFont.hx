@@ -6,8 +6,7 @@ import freetype.Face;
 import freetype.heaps.types.FontTypes.FreeTypeFontOptions;
 import freetype.heaps.types.FontTypes.FreeTypeFontSource;
 import freetype.heaps.types.FontTypes.PackedGlyph;
-import freetype.types.LoadFlags;
-import freetype.types.RenderMode;
+import freetype.types.FaceFlags;
 import h2d.Font;
 import h2d.Font.FontChar;
 import h2d.Tile;
@@ -22,6 +21,8 @@ class DynamicFreeTypeFont extends Font {
 	final faces:Array<Face>;
 	final opt:FreeTypeFontOptions;
 	final packed:Array<PackedGlyph> = [];
+	final packedByFace:Array<Array<PackedGlyph>> = [];
+	final glyphFaces:Map<Int, Face> = [];
 	final missing:Map<Int, Bool> = [];
 	final retiredTiles:Array<Tile> = [];
 
@@ -39,30 +40,26 @@ class DynamicFreeTypeFont extends Font {
 		library = new Library();
 		faces = [];
 
-		for (source in sources) {
-			final face = library.loadFace(source.bytes);
-			face.setPixelSize(0, size);
-			faces.push(face);
-		}
+		for (source in sources)
+			loadSourceFaces(source, size);
 
 		final primaryFace = faces[0];
 		super(name != null ? name : primaryFace.familyName, size);
 
 		final faceMetrics = primaryFace.metrics();
-		lineHeight = Math.ceil(faceMetrics.height / 64);
-		baseLine = Math.ceil(faceMetrics.ascender / 64);
 
 		charset = new DynamicFreeTypeCharset(this, hxd.Charset.getDefault());
 
 		final chars = FreeTypeFont.uniqueChars(opt.chars);
 		for (entry in FreeTypeFont.renderGlyphs(faces, chars, opt))
-			packed.push(entry);
+			addPacked(entry);
+		updateVerticalMetrics(faceMetrics);
 		FreeTypeFont.packGlyphs(packed, opt);
 		updatePackingCursor();
 
 		final pixels = Pixels.alloc(opt.atlasWidth, FreeTypeFont.atlasHeight(packed, opt), BGRA);
 		this.pixels = pixels;
-		pixels.clear(0);
+		pixels.clear(FreeTypeFont.glyphClearColor);
 		for (glyph in packed)
 			FreeTypeFont.writeGlyph(pixels, glyph, opt.padding);
 
@@ -79,7 +76,7 @@ class DynamicFreeTypeFont extends Font {
 	}
 
 	public override function hasChar(code:Int):Bool {
-		return glyphs.get(code) != null || FreeTypeFont.findGlyphFace(faces, code) != null;
+		return glyphs.get(code) != null || findGlyphFace(code) != null;
 	}
 
 	public override function dispose():Void {
@@ -104,21 +101,37 @@ class DynamicFreeTypeFont extends Font {
 		library.dispose();
 	}
 
+	private function loadSourceFaces(source:FreeTypeFontSource, size:Int):Void {
+		final firstIndex = source.faceIndex != null ? source.faceIndex : 0;
+		final firstFace = loadSourceFace(source, firstIndex, size);
+		faces.push(firstFace);
+
+		if (source.faceIndex != null)
+			return;
+
+		for (index in 1...firstFace.faceCount)
+			faces.push(loadSourceFace(source, index, size));
+	}
+
+	private function loadSourceFace(source:FreeTypeFontSource, index:Int, size:Int):Face {
+		final face = library.loadFace(source.bytes, index);
+		face.setPixelSize(0, size);
+		return face;
+	}
+
 	public function generateChar(code:Int):FontChar {
 		if (sourcesDisposed)
 			return null;
 		if (missing.exists(code))
 			return null;
 
-		final face = FreeTypeFont.findGlyphFace(faces, code);
+		final face = findGlyphFace(code);
 		if (face == null) {
 			missing.set(code, true);
 			return null;
 		}
 
-		final loadFlags = opt.antiAliasing ? LoadFlags.Default | LoadFlags.NoHinting : LoadFlags.Default | LoadFlags.NoHinting | LoadFlags.Monochrome;
-		final renderMode = opt.antiAliasing ? RenderMode.Normal : RenderMode.Mono;
-		final glyph = face.renderCodepoint(code, loadFlags, renderMode);
+		final glyph = face.renderCodepoint(code, FreeTypeFont.loadFlagsFor(opt), FreeTypeFont.renderModeFor(opt));
 		final entry:PackedGlyph = {
 			code: code,
 			face: face,
@@ -128,11 +141,11 @@ class DynamicFreeTypeFont extends Font {
 			w: glyph.bitmap.width + opt.padding * 2,
 			h: glyph.bitmap.height + opt.padding * 2,
 			advance: glyph.advanceX / 64,
-			width: FreeTypeFont.glyphWidth(glyph),
+			width: FreeTypeFont.glyphWidth(glyph, opt.padding),
 		};
 
 		placeGlyph(entry);
-		packed.push(entry);
+		addPacked(entry);
 		FreeTypeFont.writeGlyph(pixels, entry, opt.padding);
 		uploadPixels();
 
@@ -141,6 +154,40 @@ class DynamicFreeTypeFont extends Font {
 		addKerningFor(entry, char);
 		addKerningToExisting(entry);
 		return char;
+	}
+
+	private function findGlyphFace(code:Int):Face {
+		if (glyphFaces.exists(code))
+			return glyphFaces.get(code);
+
+		final face = FreeTypeFont.findGlyphFace(faces, code);
+		if (face != null)
+			glyphFaces.set(code, face);
+		return face;
+	}
+
+	private function addPacked(entry:PackedGlyph):Void {
+		packed.push(entry);
+
+		var group:Array<PackedGlyph> = null;
+		for (candidate in packedByFace)
+			if (candidate[0].face == entry.face) {
+				group = candidate;
+				break;
+			}
+
+		if (group == null) {
+			group = [];
+			packedByFace.push(group);
+		}
+		group.push(entry);
+	}
+
+	private function packedFaceGroup(face:Face):Array<PackedGlyph> {
+		for (group in packedByFace)
+			if (group[0].face == face)
+				return group;
+		return [];
 	}
 
 	private function placeGlyph(glyph:PackedGlyph):Void {
@@ -170,7 +217,7 @@ class DynamicFreeTypeFont extends Font {
 			return;
 
 		final next = Pixels.alloc(newWidth, newHeight, BGRA);
-		next.clear(0);
+		next.clear(FreeTypeFont.glyphClearColor);
 		next.blit(0, 0, pixels, 0, 0, pixels.width, pixels.height);
 		pixels.dispose();
 		pixels = next;
@@ -186,7 +233,7 @@ class DynamicFreeTypeFont extends Font {
 	}
 
 	private function createTile():Tile {
-		return opt.uploadTexture ? Tile.fromPixels(pixels) : new Tile(null, 0, 0, pixels.width, pixels.height);
+		return FreeTypeFont.atlasTile(pixels, opt);
 	}
 
 	private function uploadPixels():Void {
@@ -202,6 +249,23 @@ class DynamicFreeTypeFont extends Font {
 				- opt.padding, baseLine
 				- entry.glyph.bitmapTop
 				- opt.padding) : tile.sub(0, 0, 0, 0, 0, 0);
+	}
+
+	private function updateVerticalMetrics(faceMetrics:freetype.types.FaceMetrics):Void {
+		var baseline = Math.ceil(faceMetrics.ascender / 64);
+		var descent = Math.ceil(-faceMetrics.descender / 64);
+
+		for (entry in packed) {
+			final bitmap = entry.glyph.bitmap;
+			if (bitmap.width <= 0 || bitmap.height <= 0)
+				continue;
+
+			baseline = Math.ceil(Math.max(baseline, entry.glyph.bitmapTop + opt.padding));
+			descent = Math.ceil(Math.max(descent, bitmap.height - entry.glyph.bitmapTop + opt.padding));
+		}
+
+		baseLine = baseline;
+		lineHeight = Math.ceil(Math.max(faceMetrics.height / 64, baseline + descent));
 	}
 
 	private function updatePackingCursor():Void {
@@ -221,10 +285,10 @@ class DynamicFreeTypeFont extends Font {
 	}
 
 	private function addKerningFor(right:PackedGlyph, rightChar:FontChar):Void {
-		if (!opt.kerning)
+		if (!opt.kerning || !right.face.flags.has(FaceFlags.Kerning))
 			return;
-		for (left in packed) {
-			if (left.face != right.face || left.code == right.code)
+		for (left in packedFaceGroup(right.face)) {
+			if (left.code == right.code)
 				continue;
 			final kerning = right.face.kerning(left.glyph.glyphIndex, right.glyph.glyphIndex);
 			if (kerning.x != 0)
@@ -233,10 +297,10 @@ class DynamicFreeTypeFont extends Font {
 	}
 
 	private function addKerningToExisting(left:PackedGlyph):Void {
-		if (!opt.kerning)
+		if (!opt.kerning || !left.face.flags.has(FaceFlags.Kerning))
 			return;
-		for (right in packed) {
-			if (left == right || left.face != right.face)
+		for (right in packedFaceGroup(left.face)) {
+			if (left == right)
 				continue;
 			final rightChar = glyphs.get(right.code);
 			if (rightChar == null)

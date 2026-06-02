@@ -14,7 +14,7 @@ Native FreeType support for HashLink, with optional Heaps font integration.
 ## Supported formats
 
 - `ttf`
-- `ttc` **(WIP)**
+- `ttc`
 - `otf`
 
 ## Plain HashLink usage
@@ -84,6 +84,7 @@ final font = freetype.heaps.FreeTypeFont.fromFiles([
 
 `fromFiles()` bakes one atlas and chooses the first font that contains each requested character.
 It does not magically cover all Unicode; the provided font files must contain the glyphs you want to render.
+TTC collections load all contained faces by default. With `dynamicFromSources()`, set `faceIndex` on a source to load only one face from a collection.
 
 Use `dynamicFromFiles()` when text can contain characters that were not known up front.
 Characters listed in `chars` are preloaded, and later missing glyphs are rendered into the atlas on demand.
@@ -93,6 +94,19 @@ Create from bytes:
 ```haxe
 final bytes = sys.io.File.getBytes("font.ttf");
 final font = freetype.heaps.FreeTypeFont.fromBytes(bytes, 24);
+```
+
+Register TTF/OTF/TTC files as Heaps resources:
+
+```hxml
+--macro freetype.heaps.Macro.main()
+```
+
+Then load them through `hxd.Res`:
+
+```haxe
+final font = hxd.Res.fonts.my_font.toFont(24);
+final dynamicFont = hxd.Res.fonts.my_font.toDynamicFont(24);
 ```
 
 If you need access to the generated atlas pixels:

@@ -27,6 +27,7 @@ typedef FreeTypeFontAtlas = {
 typedef FreeTypeFontSource = {
 	bytes:Bytes,
 	?name:String,
+	?faceIndex:Int,
 }
 
 typedef PackedGlyph = {

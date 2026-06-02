@@ -196,6 +196,10 @@ HL_PRIM int HL_NAME(face_glyph_count)(hl_ft_face *face) {
 	return valid_face(face) ? (int)face->value->num_glyphs : 0;
 }
 
+HL_PRIM int HL_NAME(face_count)(hl_ft_face *face) {
+	return valid_face(face) ? (int)face->value->num_faces : 0;
+}
+
 HL_PRIM int HL_NAME(face_units_per_em)(hl_ft_face *face) {
 	return valid_face(face) ? (int)face->value->units_per_EM : 0;
 }
@@ -347,6 +351,7 @@ DEFINE_PRIM(_BYTES, version, _LIBRARY);
 DEFINE_PRIM(_BYTES, describe_last_error, _NO_ARG);
 DEFINE_PRIM(_I32, face_flags, _FACE);
 DEFINE_PRIM(_I32, face_glyph_count, _FACE);
+DEFINE_PRIM(_I32, face_count, _FACE);
 DEFINE_PRIM(_I32, face_units_per_em, _FACE);
 DEFINE_PRIM(_I32, face_ascender, _FACE);
 DEFINE_PRIM(_I32, face_descender, _FACE);

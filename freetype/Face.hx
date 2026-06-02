@@ -44,6 +44,13 @@ class Face {
 		return faceGlyphCount(handle);
 	}
 
+	public var faceCount(get, never):Int;
+
+	@:noCompletion
+	inline function get_faceCount():Int {
+		return faceCountNative(handle);
+	}
+
 	public var unitsPerEm(get, never):Int;
 
 	@:noCompletion
@@ -142,6 +149,11 @@ class Face {
 
 	@:hlNative("freetype", "face_glyph_count")
 	static function faceGlyphCount(face:FacePtr):Int {
+		return 0;
+	}
+
+	@:hlNative("freetype", "face_count")
+	static function faceCountNative(face:FacePtr):Int {
 		return 0;
 	}
 

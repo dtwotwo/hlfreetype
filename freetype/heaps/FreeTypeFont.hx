@@ -216,8 +216,12 @@ class FreeTypeFont {
 	}
 
 	public static function loadFlagsFor(opt:FreeTypeFontOptions):LoadFlags {
-		return opt.antiAliasing ? LoadFlags.Default | LoadFlags.NoBitmap | LoadFlags.TargetNormal : LoadFlags.Default | LoadFlags.NoBitmap | LoadFlags.TargetMono
-			| LoadFlags.Monochrome;
+		final base = LoadFlags.Default | LoadFlags.NoBitmap;
+
+		if (!opt.antiAliasing)
+			return base | LoadFlags.TargetMono | LoadFlags.Monochrome;
+
+		return base | LoadFlags.ForceAutohint | LoadFlags.TargetLight;
 	}
 
 	public static function renderModeFor(opt:FreeTypeFontOptions):RenderMode {

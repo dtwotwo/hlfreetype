@@ -166,15 +166,47 @@ jobs:
 
       - name: Update nightly release
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-        uses: andelf/nightly-release@main
+        shell: pwsh
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          tag_name: nightly
-          name: Nightly Release
-          body: |
-            Automated nightly Windows build of `hlfreetype`.
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          $tag = 'nightly'
+          $asset = 'hlfreetype-windows.zip'
+          $notes = @'
+          Automated nightly Windows build of `hlfreetype`.
 
-            Download `hlfreetype-windows.zip` and extract it where you want to keep the native files.
-          files: |
-            hlfreetype-windows.zip
+          Download `hlfreetype-windows.zip` and extract it where you want to keep the native files.
+          '@
+
+          gh release view $tag --repo $env:GITHUB_REPOSITORY *> $null
+          $releaseExists = $LASTEXITCODE -eq 0
+
+          if (-not $releaseExists) {
+            gh release create $tag $asset `
+              --repo $env:GITHUB_REPOSITORY `
+              --target $env:GITHUB_SHA `
+              --title 'Nightly Release' `
+              --notes $notes `
+              --prerelease
+
+            if ($LASTEXITCODE -ne 0) {
+              throw 'Failed to create the nightly release.'
+            }
+            exit 0
+          }
+
+          gh api --method PATCH "repos/$env:GITHUB_REPOSITORY/git/refs/tags/$tag" `
+            -f sha=$env:GITHUB_SHA `
+            -F force=true
+
+          if ($LASTEXITCODE -ne 0) {
+            throw 'Failed to move the nightly tag.'
+          }
+
+          gh release upload $tag $asset `
+            --repo $env:GITHUB_REPOSITORY `
+            --clobber
+
+          if ($LASTEXITCODE -ne 0) {
+            throw 'Failed to replace the nightly asset.'
+          }

@@ -4,49 +4,117 @@ endif()
 
 include(FetchContent)
 
-FetchContent_Declare(
-	freetype_binaries
-	URL https://github.com/ubawurinna/freetype-windows-binaries/archive/refs/tags/v2.14.3.zip
-	DOWNLOAD_EXTRACT_TIMESTAMP TRUE
+if(NOT DEFINED ENV{HASHLINK} OR "$ENV{HASHLINK}" STREQUAL "")
+	message(FATAL_ERROR "HASHLINK environment variable is not set")
+endif()
+
+set(HASHLINK_ROOT "$ENV{HASHLINK}")
+
+find_path(
+	HASHLINK_INCLUDE_DIR
+	NAMES hl.h
+	HINTS
+		"${HASHLINK_ROOT}/include"
+		"${HASHLINK_ROOT}/src"
+	NO_DEFAULT_PATH
 )
 
-FetchContent_MakeAvailable(freetype_binaries)
-
-set(FREETYPE_ROOT "${freetype_binaries_SOURCE_DIR}")
-set(FREETYPE_ARCH "x64")
-if(CMAKE_SIZEOF_VOID_P EQUAL 4)
-	set(FREETYPE_ARCH "x86")
+if(WIN32)
+	find_library(
+		HASHLINK_LIBRARY
+		NAMES libhl
+		HINTS
+			"${HASHLINK_ROOT}"
+			"${HASHLINK_ROOT}/lib"
+		NO_DEFAULT_PATH
+	)
+elseif(UNIX AND NOT APPLE)
+	find_library(
+		HASHLINK_LIBRARY
+		NAMES hl
+		HINTS
+			"${HASHLINK_ROOT}"
+			"${HASHLINK_ROOT}/lib"
+			"${HASHLINK_ROOT}/build/bin"
+		NO_DEFAULT_PATH
+	)
+else()
+	message(FATAL_ERROR "Unsupported platform")
 endif()
-if(CMAKE_SYSTEM_PROCESSOR MATCHES "ARM64|aarch64")
-	set(FREETYPE_ARCH "arm64")
+
+if(NOT HASHLINK_INCLUDE_DIR)
+	message(FATAL_ERROR
+		"Could not find hl.h under HASHLINK=${HASHLINK_ROOT}"
+	)
 endif()
 
-set(FREETYPE_LIBRARY "${FREETYPE_ROOT}/release static/vs2026/${FREETYPE_ARCH}/freetype.lib")
-if(NOT EXISTS "${FREETYPE_LIBRARY}")
-	message(FATAL_ERROR "FreeType static library not found: ${FREETYPE_LIBRARY}")
+if(NOT HASHLINK_LIBRARY)
+	message(FATAL_ERROR
+		"Could not find HashLink library under HASHLINK=${HASHLINK_ROOT}"
+	)
 endif()
 
-add_library(extension SHARED freetype.c)
+set(BUILD_SHARED_LIBS OFF CACHE BOOL "" FORCE)
+set(CMAKE_POSITION_INDEPENDENT_CODE ON)
+
+set(FT_DISABLE_ZLIB TRUE CACHE BOOL "" FORCE)
+set(FT_DISABLE_BZIP2 TRUE CACHE BOOL "" FORCE)
+set(FT_DISABLE_PNG TRUE CACHE BOOL "" FORCE)
+set(FT_DISABLE_HARFBUZZ TRUE CACHE BOOL "" FORCE)
+set(FT_DISABLE_BROTLI TRUE CACHE BOOL "" FORCE)
+
+FetchContent_Declare(
+	freetype
+	GIT_REPOSITORY https://github.com/freetype/freetype.git
+	GIT_TAG VER-2-14-3
+	GIT_SHALLOW TRUE
+)
+
+FetchContent_MakeAvailable(freetype)
+
+add_library(extension SHARED
+	freetype.c
+)
 
 set_target_properties(extension PROPERTIES
 	OUTPUT_NAME "freetype"
+	PREFIX ""
 	SUFFIX ".hdll"
-	C_STANDARD 99
+	C_STANDARD 23
 	C_STANDARD_REQUIRED ON
-	MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>DLL"
 )
 
 target_include_directories(extension PRIVATE
-	"$ENV{HASHLINK}/include"
-	"${FREETYPE_ROOT}/include"
+	"${HASHLINK_INCLUDE_DIR}"
 )
 
 target_link_libraries(extension PRIVATE
-	"$ENV{HASHLINK}/libhl.lib"
-	"${FREETYPE_LIBRARY}"
+	freetype
+	"${HASHLINK_LIBRARY}"
 )
 
 if(MSVC)
-	target_compile_options(extension PRIVATE /wd4244 /wd4267 /wd4996)
-	target_link_options(extension PRIVATE /NODEFAULTLIB:LIBCMT /NODEFAULTLIB:LIBCMTD)
+	set_target_properties(extension PROPERTIES
+		MSVC_RUNTIME_LIBRARY
+			"MultiThreaded$<$<CONFIG:Debug>:Debug>DLL"
+	)
+
+	target_compile_options(extension PRIVATE
+		/wd4244
+		/wd4267
+		/wd4996
+	)
+
+	target_link_options(extension PRIVATE
+		/NODEFAULTLIB:LIBCMT
+		/NODEFAULTLIB:LIBCMTD
+	)
+endif()
+
+
+if(UNIX AND NOT APPLE)
+	set_target_properties(extension PROPERTIES
+		BUILD_RPATH "$ORIGIN"
+		INSTALL_RPATH "$ORIGIN"
+	)
 endif()

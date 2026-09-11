@@ -1,7 +1,10 @@
 import freetype.heaps.FreeTypeFont;
 import freetype.heaps.DynamicFreeTypeFont;
+
 import h2d.Text;
+
 import hxd.Key;
+
 import sys.FileSystem;
 
 class TestHeapsWindow extends hxd.App {
@@ -138,21 +141,22 @@ class TestHeapsWindow extends hxd.App {
 		addLocalFonts(paths, "fonts");
 
 		for (path in [
+			// windows
 			"C:/Windows/Fonts/segoeui.ttf",
 			"C:/Windows/Fonts/seguisym.ttf",
 			"C:/Windows/Fonts/arial.ttf",
-			"C:/Windows/Fonts/arialuni.ttf",
 			"C:/Windows/Fonts/Nirmala.ttf",
-			"C:/Windows/Fonts/NirmalaUI.ttf",
-			"C:/Windows/Fonts/msyh.ttc",
-			"C:/Windows/Fonts/simsun.ttc",
-			"C:/Windows/Fonts/meiryo.ttc",
-			"C:/Windows/Fonts/msgothic.ttc",
-			"C:/Windows/Fonts/malgun.ttf",
-			"C:/Windows/Fonts/tahoma.ttf"
-		])
-			if (FileSystem.exists(path) && paths.indexOf(path) == -1)
+
+			// linux
+			"/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+			"/usr/share/fonts/truetype/dejavu/DejaVuSansCondensed.ttf",
+			"/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc"
+		]) {
+			if (FileSystem.exists(path))
 				paths.push(path);
+		}
+		if (FileSystem.exists(path) && paths.indexOf(path) == -1)
+			paths.push(path);
 
 		if (paths.length == 0)
 			throw "No TTF fallback fonts found";

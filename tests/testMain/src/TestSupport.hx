@@ -1,5 +1,6 @@
 import haxe.io.Bytes;
 import haxe.io.Path;
+
 import sys.FileSystem;
 import sys.io.File;
 
@@ -15,7 +16,7 @@ typedef FixtureIssue = {
 }
 
 class TestSupport {
-	public static final supportedExtensions = ["ttf", "otf"];
+	public static final supportedExtensions = ["ttf", "ttc", "otf"];
 	public static final fixtures = loadFixtures();
 
 	static function loadFixtures():Array<String> {
@@ -29,9 +30,16 @@ class TestSupport {
 			return localFonts;
 
 		final systemFonts = [
+			// windows
 			"C:/Windows/Fonts/arial.ttf",
 			"C:/Windows/Fonts/segoeui.ttf",
-			"C:/Windows/Fonts/calibri.ttf"
+			"C:/Windows/Fonts/calibri.ttf",
+
+			// linux
+			"/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+			"/usr/share/fonts/truetype/dejavu/DejaVuSerif.ttf",
+			"/usr/share/fonts/truetype/liberation2/LiberationSans-Regular.ttf",
+			"/usr/share/fonts/truetype/freefont/FreeSans.ttf"
 		];
 		final result = [];
 		for (path in systemFonts)
@@ -81,14 +89,24 @@ class TestSupport {
 	}
 
 	public static function findTTCFixture():Null<String> {
+		final explicitPath = Sys.getEnv("HLFREETYPE_TEST_TTC");
+		if (explicitPath != null && explicitPath.length > 0 && FileSystem.exists(explicitPath))
+			return explicitPath;
+
 		for (path in [
+			// windows
 			"C:/Windows/Fonts/msyh.ttc",
 			"C:/Windows/Fonts/meiryo.ttc",
 			"C:/Windows/Fonts/msgothic.ttc",
-			"C:/Windows/Fonts/cambria.ttc"
+			"C:/Windows/Fonts/cambria.ttc",
+
+			// linux
+			"/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc",
+			"/usr/share/fonts/opentype/noto/NotoSerifCJK-Regular.ttc"
 		])
 			if (FileSystem.exists(path))
 				return path;
+
 		return null;
 	}
 

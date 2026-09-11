@@ -71,11 +71,16 @@ Use multiple font files when your text spans scripts that one font does not cove
 
 ```haxe
 final font = freetype.heaps.FreeTypeFont.fromFiles([
+	// windows
 	"C:/Windows/Fonts/segoeui.ttf",
+	"C:/Windows/Fonts/seguisym.ttf",
+	"C:/Windows/Fonts/arial.ttf",
 	"C:/Windows/Fonts/Nirmala.ttf",
-	"C:/Windows/Fonts/msyh.ttc",
-	"C:/Windows/Fonts/meiryo.ttc",
-	"C:/Windows/Fonts/malgun.ttf",
+
+	// linux
+	"/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+	"/usr/share/fonts/truetype/dejavu/DejaVuSansCondensed.ttf",
+	"/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc"
 ], 24, {
 	chars: "Hello Привет हिन्दी 中文 日本語 한국어",
 	kerning: true,
@@ -140,61 +145,254 @@ Options:
 
 ## Build
 
-FreeType Windows binaries are fetched automatically by CMake.
+FreeType is fetched and built automatically by CMake.
 
-Requirements:
+The same FreeType version is used on Windows and Linux.
 
-- CMake 3.10+
-- Ninja for the provided preset
-- MSVC build tools
-- `HASHLINK` environment variable pointing to your HashLink folder
+FreeType is linked statically into `freetype.hdll`, so users do not need a separate FreeType DLL or shared library.
+
+### Requirements
+
+Common requirements:
+
+* CMake 3.10+
+* Ninja
+* Git
+* `HASHLINK` environment variable pointing to a HashLink installation or source tree
+
+Windows additionally requires:
+
+* Visual Studio / MSVC build tools
+
+Linux additionally requires:
+
+* GCC or Clang
+* standard build tools
+
+## Build on Windows
+
+Set `HASHLINK` to your HashLink directory:
+
+```powershell
+$env:HASHLINK = "C:\Path\To\HashLink"
+```
+
+Configure:
+
+```powershell
+cmake --preset windows-release --fresh
+```
+
+Build:
+
+```powershell
+cmake --build --preset windows-release
+```
+
+Output:
+
+```text
+out/build/windows-release/extension/freetype.hdll
+out/build/windows-release/extension/freetype.lib
+```
+
+The native module is:
+
+```text
+freetype.hdll
+```
+
+Place it next to your `.hl` output, or otherwise make sure HashLink can load it.
+
+## Build on Linux
+
+Install the basic build dependencies.
+
+Ubuntu/Debian:
+
+```sh
+sudo apt-get update
+sudo apt-get install -y build-essential git cmake ninja-build
+```
+
+Set `HASHLINK` to your HashLink installation or source tree:
+
+```sh
+export HASHLINK=/path/to/hashlink
+```
+
+Configure:
+
+```sh
+cmake --preset linux-release --fresh
+```
 
 Build:
 
 ```sh
-cmake --preset release
-cmake --build --preset release
+cmake --build --preset linux-release
 ```
 
-Outputs:
+Output:
 
-- `freetype.hdll`
-- `freetype.lib` on Windows
-
-FreeType is linked statically, so no separate `freetype.dll` is required.
+```text
+out/build/linux-release/extension/freetype.hdll
+```
 
 Place `freetype.hdll` next to your `.hl` output, or otherwise make sure HashLink can load it.
 
+If `libhl.so` is not installed system-wide, make sure it can also be found at runtime, for example:
+
+```sh
+export LD_LIBRARY_PATH="$HASHLINK:${LD_LIBRARY_PATH:-}"
+```
+
 ## Tests
 
-Test launchers:
+The test suite covers:
 
-- `tests\test-hl.bat`
-- `tests\test-heaps.bat`
-- `tests\test-heaps-window.bat`
+* FreeType initialization
+* font loading
+* face metrics
+* kerning
+* glyph lookup
+* glyph rendering
+* TTF/OTF support
+* TTC collections when a TTC test font is available
+* invalid input handling
+* deterministic Heaps atlas creation
 
-`test-hl` checks plain FreeType loading, metrics, kerning, glyph rendering, and invalid input.
+### Plain HashLink tests
+
+Compile:
+
+```sh
+cd tests/testMain
+haxe test-hl.hxml
+```
+
+Run:
+
+```sh
+hl test.hl
+```
+
+### Heaps tests
+
+Compile:
+
+```sh
+cd tests/testMain
+haxe test-heaps.hxml
+```
+
+Run:
+
+```sh
+hl test-heaps.hl
+```
+
+### Windows test launchers
+
+Convenience launchers are also available on Windows:
+
+* `tests/test-hl.bat`
+* `tests/test-heaps.bat`
+* `tests/test-heaps-window.bat`
+
+`test-hl` checks plain FreeType loading, metrics, kerning, glyph rendering and invalid input.
 
 `test-heaps` checks deterministic `h2d.Font` atlas creation without opening a window.
 
-`test-heaps-window` opens a Heaps window and renders multilingual Unicode sample text from multiple TTF fallback fonts. Press Escape to close.
+`test-heaps-window` opens a Heaps window and renders multilingual Unicode sample text using multiple fallback fonts. Press Escape to close.
 
-By default tests use common Windows fonts. You can override the font with:
+## Test fonts
+
+Tests first look for explicitly configured test fonts and then fall back to common system fonts.
+
+To specify a TTF or OTF test font:
+
+### Windows
+
+```powershell
+$env:HLFREETYPE_TEST_FONT = "C:\Path\To\font.ttf"
+```
+
+or in `cmd.exe`:
+
+```bat
+set HLFREETYPE_TEST_FONT=C:\Path\To\font.ttf
+```
+
+### Linux
 
 ```sh
-set HLFREETYPE_TEST_FONT=C:\Path\To\font.ttf
+export HLFREETYPE_TEST_FONT=/path/to/font.ttf
+```
+
+For example:
+
+```sh
+export HLFREETYPE_TEST_FONT=/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf
+```
+
+To explicitly specify a TTC collection:
+
+### Windows
+
+```powershell
+$env:HLFREETYPE_TEST_TTC = "C:\Windows\Fonts\msyh.ttc"
+```
+
+### Linux
+
+```sh
+export HLFREETYPE_TEST_TTC=/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc
+```
+
+On Ubuntu/Debian, useful test fonts can be installed with:
+
+```sh
+sudo apt-get install -y fonts-dejavu-core fonts-noto-cjk
 ```
 
 ## GitHub Actions
 
-The Windows workflow builds the native library, runs tests, uploads an artifact, and updates the nightly release on pushes to `main`.
+GitHub Actions builds and tests the native extension on both Windows and Linux.
 
-The artifact contains:
+The workflow runs against:
 
-- `freetype.hdll`
-- `freetype.lib`
+* Windows x86_64
+* Linux x86_64
+* Haxe 4.3.7
+* latest Haxe
+
+Nightly builds are published when changes are pushed to `main`.
+
+Release artifacts:
+
+```text
+hlfreetype-windows.zip
+hlfreetype-linux.tar.gz
+```
+
+The Windows archive contains:
+
+```text
+freetype.hdll
+freetype.lib
+```
+
+The Linux archive contains:
+
+```text
+freetype.hdll
+```
+
+FreeType itself is statically linked into the native module.
+
+HashLink must still be installed or otherwise available on the target system.
 
 ## TODO
 
-- Linux support
 - macOS support

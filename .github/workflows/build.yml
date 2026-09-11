@@ -13,66 +13,184 @@ permissions:
 
 jobs:
   build:
-    name: Build native
-    runs-on: windows-2025-vs2026
+    name: Build native (${{ matrix.os-name }})
+    runs-on: ${{ matrix.runner }}
+
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os-name: Windows
+            runner: windows-latest
+            preset: windows-release
+            artifact: native-windows
+
+          - os-name: Linux
+            runner: ubuntu-latest
+            preset: linux-release
+            artifact: native-linux
 
     steps:
       - name: Checkout
         uses: actions/checkout@v7
 
       - name: Set up MSVC
+        if: runner.os == 'Windows'
         uses: vln-devsecops/actions-msvc@release/v1
         with:
           arch: x64
 
       - name: Download HashLink
+        if: runner.os == 'Windows'
         shell: pwsh
         run: |
-          $release = Invoke-RestMethod -Uri 'https://api.github.com/repos/HaxeFoundation/hashlink/releases/latest'
-          $asset = $release.assets | Where-Object { $_.name -like 'hashlink-*-win.zip' } | Select-Object -First 1
+          $release = Invoke-RestMethod `
+            -Uri 'https://api.github.com/repos/HaxeFoundation/hashlink/releases/latest'
+
+          $asset = $release.assets |
+            Where-Object { $_.name -like 'hashlink-*-win.zip' } |
+            Select-Object -First 1
+
           if (-not $asset) {
             throw 'Could not find a Windows HashLink release asset.'
           }
 
-          Invoke-WebRequest -Uri $asset.browser_download_url -OutFile 'hashlink-win.zip'
-          Expand-Archive -LiteralPath 'hashlink-win.zip' -DestinationPath 'hashlink' -Force
+          Invoke-WebRequest `
+            -Uri $asset.browser_download_url `
+            -OutFile 'hashlink-win.zip'
 
-          $hashlinkDir = Get-ChildItem -Path 'hashlink' -Directory | Select-Object -First 1
+          Expand-Archive `
+            -LiteralPath 'hashlink-win.zip' `
+            -DestinationPath 'hashlink' `
+            -Force
+
+          $hashlinkDir = Get-ChildItem `
+            -Path 'hashlink' `
+            -Directory |
+            Select-Object -First 1
+
           if (-not $hashlinkDir) {
             throw 'Could not locate the extracted HashLink directory.'
           }
 
-          "HASHLINK=$($hashlinkDir.FullName)" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
-          "$($hashlinkDir.FullName)" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+          "HASHLINK=$($hashlinkDir.FullName)" |
+            Out-File `
+              -FilePath $env:GITHUB_ENV `
+              -Encoding utf8 `
+              -Append
+
+          "$($hashlinkDir.FullName)" |
+            Out-File `
+              -FilePath $env:GITHUB_PATH `
+              -Encoding utf8 `
+              -Append
+
+      - name: Install Linux dependencies
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            build-essential \
+            git \
+            cmake \
+            ninja-build
+
+      - name: Build HashLink
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          git clone \
+            --depth 1 \
+            --branch 1.16 \
+            https://github.com/HaxeFoundation/hashlink.git \
+            hashlink
+
+          make \
+            -C hashlink \
+            -j"$(nproc)" \
+            libhl.so \
+            hl
+
+          echo "HASHLINK=$GITHUB_WORKSPACE/hashlink" >> "$GITHUB_ENV"
+          echo "$GITHUB_WORKSPACE/hashlink" >> "$GITHUB_PATH"
+          echo "LD_LIBRARY_PATH=$GITHUB_WORKSPACE/hashlink:${LD_LIBRARY_PATH:-}" >> "$GITHUB_ENV"
 
       - name: Configure CMake
-        run: cmake --preset release
+        shell: bash
+        run: |
+          cmake --preset "${{ matrix.preset }}" --fresh
 
       - name: Build release
-        run: cmake --build out/build/release --config Release
+        shell: bash
+        run: |
+          cmake --build --preset "${{ matrix.preset }}"
 
-      - name: Stage native build
+      - name: Stage Windows native build
+        if: runner.os == 'Windows'
         shell: pwsh
         run: |
-          New-Item -ItemType Directory -Force -Path 'dist/native' | Out-Null
-          Copy-Item 'out/build/release/extension/freetype.hdll' 'dist/native/freetype.hdll'
-          Copy-Item 'out/build/release/extension/freetype.lib' 'dist/native/freetype.lib'
+          New-Item `
+            -ItemType Directory `
+            -Force `
+            -Path 'dist/native' |
+            Out-Null
 
-      - name: Save native build
-        uses: actions/cache/save@v5.0.5
+          Copy-Item `
+            'out/build/windows-release/extension/freetype.hdll' `
+            'dist/native/freetype.hdll'
+
+          Copy-Item `
+            'out/build/windows-release/extension/freetype.lib' `
+            'dist/native/freetype.lib'
+
+      - name: Stage Linux native build
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          mkdir -p dist/native
+
+          cp \
+            out/build/linux-release/extension/freetype.hdll \
+            dist/native/freetype.hdll
+
+          file dist/native/freetype.hdll
+          ldd dist/native/freetype.hdll || true
+
+      - name: Upload native build
+        uses: actions/upload-artifact@v7
         with:
+          name: ${{ matrix.artifact }}
           path: dist/native
-          key: ${{ runner.os }}-hlfreetype-native-${{ github.run_id }}-${{ github.run_attempt }}
+          if-no-files-found: error
 
   test:
-    name: Test Haxe ${{ matrix.haxe-version }}
+    name: Test ${{ matrix.os-name }} / Haxe ${{ matrix.haxe-version }}
     needs: build
-    runs-on: windows-2025-vs2026
+    runs-on: ${{ matrix.runner }}
 
     strategy:
       fail-fast: false
+
       matrix:
-        haxe-version: ["4.3.7", "latest"]
+        os:
+          - windows
+          - linux
+
+        haxe-version:
+          - "4.3.7"
+          - "latest"
+
+        include:
+          - os: windows
+            os-name: Windows
+            runner: windows-latest
+            artifact: native-windows
+
+          - os: linux
+            os-name: Linux
+            runner: ubuntu-latest
+            artifact: native-linux
 
     steps:
       - name: Checkout
@@ -84,129 +202,226 @@ jobs:
           haxe-version: ${{ matrix.haxe-version }}
 
       - name: Download HashLink
+        if: runner.os == 'Windows'
         shell: pwsh
         run: |
-          $release = Invoke-RestMethod -Uri 'https://api.github.com/repos/HaxeFoundation/hashlink/releases/latest'
-          $asset = $release.assets | Where-Object { $_.name -like 'hashlink-*-win.zip' } | Select-Object -First 1
+          $release = Invoke-RestMethod `
+            -Uri 'https://api.github.com/repos/HaxeFoundation/hashlink/releases/latest'
+
+          $asset = $release.assets |
+            Where-Object { $_.name -like 'hashlink-*-win.zip' } |
+            Select-Object -First 1
+
           if (-not $asset) {
             throw 'Could not find a Windows HashLink release asset.'
           }
 
-          Invoke-WebRequest -Uri $asset.browser_download_url -OutFile 'hashlink-win.zip'
-          Expand-Archive -LiteralPath 'hashlink-win.zip' -DestinationPath 'hashlink' -Force
+          Invoke-WebRequest `
+            -Uri $asset.browser_download_url `
+            -OutFile 'hashlink-win.zip'
 
-          $hashlinkDir = Get-ChildItem -Path 'hashlink' -Directory | Select-Object -First 1
+          Expand-Archive `
+            -LiteralPath 'hashlink-win.zip' `
+            -DestinationPath 'hashlink' `
+            -Force
+
+          $hashlinkDir = Get-ChildItem `
+            -Path 'hashlink' `
+            -Directory |
+            Select-Object -First 1
+
           if (-not $hashlinkDir) {
             throw 'Could not locate the extracted HashLink directory.'
           }
 
-          "HASHLINK=$($hashlinkDir.FullName)" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
-          "$($hashlinkDir.FullName)" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+          "HASHLINK=$($hashlinkDir.FullName)" |
+            Out-File `
+              -FilePath $env:GITHUB_ENV `
+              -Encoding utf8 `
+              -Append
 
-      - name: Restore native build
-        uses: actions/cache/restore@v5.0.5
+          "$($hashlinkDir.FullName)" |
+            Out-File `
+              -FilePath $env:GITHUB_PATH `
+              -Encoding utf8 `
+              -Append
+
+      - name: Install Linux test dependencies
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          sudo apt-get update
+
+          sudo apt-get install -y \
+            build-essential \
+            git \
+            fonts-dejavu-core \
+            fonts-noto-cjk
+
+      - name: Build HashLink
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          git clone \
+            --depth 1 \
+            --branch 1.16 \
+            https://github.com/HaxeFoundation/hashlink.git \
+            hashlink
+
+          make \
+            -C hashlink \
+            -j"$(nproc)" \
+            libhl.so \
+            hl
+
+          echo "HASHLINK=$GITHUB_WORKSPACE/hashlink" >> "$GITHUB_ENV"
+          echo "$GITHUB_WORKSPACE/hashlink" >> "$GITHUB_PATH"
+          echo "LD_LIBRARY_PATH=$GITHUB_WORKSPACE/hashlink:${LD_LIBRARY_PATH:-}" >> "$GITHUB_ENV"
+
+          echo "HLFREETYPE_TEST_FONT=/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf" >> "$GITHUB_ENV"
+
+      - name: Download native build
+        uses: actions/download-artifact@v7
         with:
+          name: ${{ matrix.artifact }}
           path: dist/native
-          key: ${{ runner.os }}-hlfreetype-native-${{ github.run_id }}-${{ github.run_attempt }}
 
-      - name: Stage test native files
+      - name: Stage native module
+        if: runner.os == 'Windows'
         shell: pwsh
-        run: Copy-Item 'dist/native/freetype.hdll' 'tests/testMain/freetype.hdll' -Force
+        run: |
+          Copy-Item `
+            'dist/native/freetype.hdll' `
+            'tests/testMain/freetype.hdll' `
+            -Force
+
+      - name: Stage native module
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          cp \
+            dist/native/freetype.hdll \
+            tests/testMain/freetype.hdll
+
+      - name: HashLink version
+        shell: bash
+        run: |
+          hl --version
 
       - name: Compile HL tests
         working-directory: tests/testMain
+        shell: bash
         run: |
           haxe --version
           haxe test-hl.hxml
 
       - name: Run HL tests
         working-directory: tests/testMain
+        shell: bash
         run: |
-          hl --version
           hl test.hl
 
   package:
     name: Package release
-    needs: test
-    runs-on: windows-2025-vs2026
+    needs:
+      - build
+      - test
+
+    runs-on: ubuntu-latest
 
     steps:
       - name: Checkout
         uses: actions/checkout@v7
 
-      - name: Restore native build
-        uses: actions/cache/restore@v5.0.5
+      - name: Download Windows build
+        uses: actions/download-artifact@v7
         with:
-          path: dist/native
-          key: ${{ runner.os }}-hlfreetype-native-${{ github.run_id }}-${{ github.run_attempt }}
+          name: native-windows
+          path: dist/windows
+
+      - name: Download Linux build
+        uses: actions/download-artifact@v7
+        with:
+          name: native-linux
+          path: dist/linux
 
       - name: Verify packaged files
-        shell: pwsh
+        shell: bash
         run: |
-          if (-not (Test-Path 'dist/native/freetype.hdll')) {
-            throw 'Missing dist/native/freetype.hdll'
-          }
-          if (-not (Test-Path 'dist/native/freetype.lib')) {
-            throw 'Missing dist/native/freetype.lib'
-          }
+          test -f dist/windows/freetype.hdll
+          test -f dist/windows/freetype.lib
+          test -f dist/linux/freetype.hdll
 
-      - name: Create release zip
-        shell: pwsh
+      - name: Create Windows archive
+        shell: bash
         run: |
-          if (Test-Path 'hlfreetype-windows.zip') {
-            Remove-Item 'hlfreetype-windows.zip' -Force
-          }
-          Compress-Archive -Path 'dist/native/*' -DestinationPath 'hlfreetype-windows.zip'
+          (
+            cd dist/windows
+            zip -r ../../hlfreetype-windows.zip .
+          )
 
-      - name: Upload artifact
+      - name: Create Linux archive
+        shell: bash
+        run: |
+          tar \
+            -C dist/linux \
+            -czf hlfreetype-linux.tar.gz \
+            .
+
+      - name: Upload release artifacts
         uses: actions/upload-artifact@v7
         with:
-          name: hlfreetype-windows
-          path: hlfreetype-windows.zip
+          name: hlfreetype-release
+          path: |
+            hlfreetype-windows.zip
+            hlfreetype-linux.tar.gz
+          if-no-files-found: error
 
       - name: Update nightly release
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-        shell: pwsh
+        shell: bash
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          $tag = 'nightly'
-          $asset = 'hlfreetype-windows.zip'
-          $notes = @'
-          Automated nightly Windows build of `hlfreetype`.
+          TAG="nightly"
 
-          Download `hlfreetype-windows.zip` and extract it where you want to keep the native files.
-          '@
+          WINDOWS_ASSET="hlfreetype-windows.zip"
+          LINUX_ASSET="hlfreetype-linux.tar.gz"
 
-          gh release view $tag --repo $env:GITHUB_REPOSITORY *> $null
-          $releaseExists = $LASTEXITCODE -eq 0
+          NOTES=$(cat <<'EOF'
+          Automated nightly builds of `hlfreetype`.
 
-          if (-not $releaseExists) {
-            gh release create $tag $asset `
-              --repo $env:GITHUB_REPOSITORY `
-              --target $env:GITHUB_SHA `
-              --title 'Nightly Release' `
-              --notes $notes `
+          Available builds:
+
+          - `hlfreetype-windows.zip` - Windows
+          - `hlfreetype-linux.tar.gz` - Linux
+          EOF
+          )
+
+          if ! gh release view "$TAG" \
+            --repo "$GITHUB_REPOSITORY" \
+            > /dev/null 2>&1
+          then
+            gh release create "$TAG" \
+              "$WINDOWS_ASSET" \
+              "$LINUX_ASSET" \
+              --repo "$GITHUB_REPOSITORY" \
+              --target "$GITHUB_SHA" \
+              --title "Nightly Release" \
+              --notes "$NOTES" \
               --prerelease
 
-            if ($LASTEXITCODE -ne 0) {
-              throw 'Failed to create the nightly release.'
-            }
             exit 0
-          }
+          fi
 
-          gh api --method PATCH "repos/$env:GITHUB_REPOSITORY/git/refs/tags/$tag" `
-            -f sha=$env:GITHUB_SHA `
+          gh api \
+            --method PATCH \
+            "repos/$GITHUB_REPOSITORY/git/refs/tags/$TAG" \
+            -f sha="$GITHUB_SHA" \
             -F force=true
 
-          if ($LASTEXITCODE -ne 0) {
-            throw 'Failed to move the nightly tag.'
-          }
-
-          gh release upload $tag $asset `
-            --repo $env:GITHUB_REPOSITORY `
+          gh release upload "$TAG" \
+            "$WINDOWS_ASSET" \
+            "$LINUX_ASSET" \
+            --repo "$GITHUB_REPOSITORY" \
             --clobber
-
-          if ($LASTEXITCODE -ne 0) {
-            throw 'Failed to replace the nightly asset.'
-          }

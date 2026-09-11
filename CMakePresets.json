@@ -1,9 +1,19 @@
 {
 	"version": 3,
+	"buildPresets": [
+		{
+			"name": "windows-release",
+			"configurePreset": "windows-release"
+		},
+		{
+			"name": "linux-release",
+			"configurePreset": "linux-release"
+		}
+	],
 	"configurePresets": [
 		{
-			"name": "release",
-			"displayName": "Release",
+			"name": "windows-release",
+			"displayName": "Windows Release",
 			"generator": "Ninja",
 			"binaryDir": "${sourceDir}/out/build/${presetName}",
 			"installDir": "${sourceDir}/out/install/${presetName}",
@@ -13,12 +23,27 @@
 			},
 			"cacheVariables": {
 				"CMAKE_C_COMPILER": "cl.exe",
-				"CMAKE_BUILD_TYPE": "release"
+				"CMAKE_BUILD_TYPE": "Release"
 			},
 			"condition": {
 				"type": "equals",
 				"lhs": "${hostSystemName}",
 				"rhs": "Windows"
+			}
+		},
+		{
+			"name": "linux-release",
+			"displayName": "Linux Release",
+			"generator": "Ninja",
+			"binaryDir": "${sourceDir}/out/build/${presetName}",
+			"installDir": "${sourceDir}/out/install/${presetName}",
+			"cacheVariables": {
+				"CMAKE_BUILD_TYPE": "Release"
+			},
+			"condition": {
+				"type": "equals",
+				"lhs": "${hostSystemName}",
+				"rhs": "Linux"
 			}
 		}
 	]

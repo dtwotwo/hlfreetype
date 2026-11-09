@@ -13,7 +13,7 @@ import haxe.io.Bytes;
 class Face {
 	public var library(default, null):Library;
 
-	final data:Bytes;
+	var data:Bytes;
 	final handle:FacePtr;
 	var disposed = false;
 
@@ -28,6 +28,7 @@ class Face {
 			return;
 		disposed = true;
 		faceDispose(handle);
+		data = null;
 	}
 
 	public var flags(get, never):FaceFlags;

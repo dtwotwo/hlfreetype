@@ -21,6 +21,7 @@ import sys.io.File;
 
 @:access(h2d.Font)
 @:access(h2d.Tile)
+@:allow(freetype.heaps.DynamicFreeTypeFont)
 class FreeTypeFont {
 	public static inline final glyphClearColor = 0x00FFFFFF;
 
@@ -81,7 +82,7 @@ class FreeTypeFont {
 	}
 
 	public static function normalizeOptions(?options:FreeTypeFontOptions):FreeTypeFontOptions {
-		final opt:FreeTypeFontOptions = options == null ? {} : options;
+		final opt:FreeTypeFontOptions = options == null ? {} : Reflect.copy(options);
 		if (opt.antiAliasing == null)
 			opt.antiAliasing = true;
 		if (opt.chars == null)
@@ -232,9 +233,29 @@ class FreeTypeFont {
 		if (!opt.uploadTexture)
 			return new Tile(null, 0, 0, pixels.width, pixels.height);
 
-		final tile = Tile.fromPixels(pixels);
+		final expanded = pixels.format == R8 ? expandAtlas(pixels) : pixels;
+		final texture = h3d.mat.Texture.fromPixels(expanded, h3d.mat.Texture.nativeFormat);
+		if (expanded != pixels)
+			expanded.dispose();
+
+		final tile = new Tile(texture, 0, 0, pixels.width, pixels.height);
 		tile.getTexture().filter = opt.antiAliasing ? Filter.Linear : Filter.Nearest;
 		return tile;
+	}
+
+	static function expandAtlas(pixels:Pixels):Pixels {
+		final expanded = Pixels.alloc(pixels.width, pixels.height, BGRA);
+		for (i in 0...pixels.width * pixels.height)
+			expanded.bytes.setInt32(i * 4, pixels.bytes.get(pixels.offset + i) << 24 | 0xFFFFFF);
+
+		return expanded;
+	}
+
+	static function uploadAtlas(texture:h3d.mat.Texture, pixels:Pixels):Void {
+		final expanded = pixels.format == R8 ? expandAtlas(pixels) : pixels;
+		texture.uploadPixels(expanded);
+		if (expanded != pixels)
+			expanded.dispose();
 	}
 
 	public static function addKerning(glyphs:Array<PackedGlyph>, font:Font):Void {
@@ -279,7 +300,7 @@ class FreeTypeFont {
 			final row = y * bitmap.pitch;
 			for (x in 0...bitmap.width) {
 				final alpha = bitmap.buffer.getUI8(row + x);
-				pixels.setPixel(tx + x, ty + y, alpha << 24 | 0xFFFFFF);
+				pixels.setPixel(tx + x, ty + y, pixels.format == R8 ? alpha : alpha << 24 | 0xFFFFFF);
 			}
 		}
 	}
@@ -290,7 +311,7 @@ class FreeTypeFont {
 			for (x in 0...bitmap.width) {
 				final byte = bitmap.buffer.getUI8(row + (x >> 3));
 				final alpha = (byte & (0x80 >> (x & 7))) != 0 ? 0xFF : 0;
-				pixels.setPixel(tx + x, ty + y, alpha << 24 | 0xFFFFFF);
+				pixels.setPixel(tx + x, ty + y, pixels.format == R8 ? alpha : alpha << 24 | 0xFFFFFF);
 			}
 		}
 	}

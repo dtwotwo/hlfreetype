@@ -94,6 +94,8 @@ TTC collections load all contained faces by default. With `dynamicFromSources()`
 Use `dynamicFromFiles()` when text can contain characters that were not known up front.
 Characters listed in `chars` are preloaded, and later missing glyphs are rendered into the atlas on demand.
 
+Dynamic fonts retain one byte per atlas pixel and release individual glyph bitmap buffers after packing. GPU uploads temporarily expand coverage to full color and alpha, with no change to glyph rendering. Reading `dynamicFont.pixels` materializes the original BGRA buffer and retains it for subsequent pixel access; avoid reading it just to inspect memory usage.
+
 Create from bytes:
 
 ```haxe

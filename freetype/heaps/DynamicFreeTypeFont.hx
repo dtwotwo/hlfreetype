@@ -15,7 +15,9 @@ import hxd.Pixels;
 @:access(h2d.Font)
 @:access(h2d.Tile)
 class DynamicFreeTypeFont extends Font {
-	public var pixels(default, null):Pixels;
+	public var pixels(get, never):Pixels;
+
+	var atlasPixels:Pixels;
 
 	final library:Library;
 	final faces:Array<Face>;
@@ -57,11 +59,13 @@ class DynamicFreeTypeFont extends Font {
 		FreeTypeFont.packGlyphs(packed, opt);
 		updatePackingCursor();
 
-		final pixels = Pixels.alloc(opt.atlasWidth, FreeTypeFont.atlasHeight(packed, opt), BGRA);
-		this.pixels = pixels;
-		pixels.clear(FreeTypeFont.glyphClearColor);
-		for (glyph in packed)
+		final pixels = Pixels.alloc(opt.atlasWidth, FreeTypeFont.atlasHeight(packed, opt), R8);
+		atlasPixels = pixels;
+		pixels.clear(0);
+		for (glyph in packed) {
 			FreeTypeFont.writeGlyph(pixels, glyph, opt.padding);
+			glyph.glyph.bitmap.buffer = null;
+		}
 
 		tile = createTile();
 		for (entry in packed)
@@ -73,6 +77,16 @@ class DynamicFreeTypeFont extends Font {
 		final fallback = glyphs.get("?".code);
 		if (fallback != null)
 			defaultChar = fallback;
+	}
+
+	function get_pixels():Pixels {
+		if (atlasPixels.format == R8) {
+			final expanded = FreeTypeFont.expandAtlas(atlasPixels);
+			atlasPixels.dispose();
+			atlasPixels = expanded;
+		}
+
+		return atlasPixels;
 	}
 
 	public override function hasChar(code:Int):Bool {
@@ -88,7 +102,7 @@ class DynamicFreeTypeFont extends Font {
 		for (tile in retiredTiles)
 			tile.dispose();
 		disposeSources();
-		pixels.dispose();
+		atlasPixels.dispose();
 	}
 
 	public function disposeSources():Void {
@@ -146,7 +160,8 @@ class DynamicFreeTypeFont extends Font {
 
 		placeGlyph(entry);
 		addPacked(entry);
-		FreeTypeFont.writeGlyph(pixels, entry, opt.padding);
+		FreeTypeFont.writeGlyph(atlasPixels, entry, opt.padding);
+		entry.glyph.bitmap.buffer = null;
 		uploadPixels();
 
 		final char = new FontChar(glyphTile(entry), entry.width);
@@ -192,7 +207,7 @@ class DynamicFreeTypeFont extends Font {
 
 	private function placeGlyph(glyph:PackedGlyph):Void {
 		if (glyph.w > opt.atlasWidth)
-			resizeAtlas(FreeTypeFont.nextPowerOfTwo(glyph.w), pixels.height);
+			resizeAtlas(FreeTypeFont.nextPowerOfTwo(glyph.w), atlasPixels.height);
 
 		if (cursorX + glyph.w > opt.atlasWidth) {
 			cursorX = 0;
@@ -200,7 +215,7 @@ class DynamicFreeTypeFont extends Font {
 			rowHeight = 0;
 		}
 
-		if (cursorY + glyph.h > pixels.height)
+		if (cursorY + glyph.h > atlasPixels.height)
 			resizeAtlas(opt.atlasWidth, FreeTypeFont.nextPowerOfTwo(cursorY + glyph.h));
 
 		glyph.x = cursorX;
@@ -212,15 +227,15 @@ class DynamicFreeTypeFont extends Font {
 
 	private function resizeAtlas(width:Int, height:Int):Void {
 		final newWidth = FreeTypeFont.nextPowerOfTwo(Std.int(Math.max(width, opt.atlasWidth)));
-		final newHeight = FreeTypeFont.nextPowerOfTwo(Std.int(Math.max(height, pixels.height)));
-		if (newWidth == opt.atlasWidth && newHeight == pixels.height)
+		final newHeight = FreeTypeFont.nextPowerOfTwo(Std.int(Math.max(height, atlasPixels.height)));
+		if (newWidth == opt.atlasWidth && newHeight == atlasPixels.height)
 			return;
 
-		final next = Pixels.alloc(newWidth, newHeight, BGRA);
-		next.clear(FreeTypeFont.glyphClearColor);
-		next.blit(0, 0, pixels, 0, 0, pixels.width, pixels.height);
-		pixels.dispose();
-		pixels = next;
+		final next = Pixels.alloc(newWidth, newHeight, atlasPixels.format);
+		next.clear(atlasPixels.format == R8 ? 0 : FreeTypeFont.glyphClearColor);
+		next.blit(0, 0, atlasPixels, 0, 0, atlasPixels.width, atlasPixels.height);
+		atlasPixels.dispose();
+		atlasPixels = next;
 		opt.atlasWidth = newWidth;
 		if (tile != null)
 			retiredTiles.push(tile);
@@ -233,13 +248,13 @@ class DynamicFreeTypeFont extends Font {
 	}
 
 	private function createTile():Tile {
-		return FreeTypeFont.atlasTile(pixels, opt);
+		return FreeTypeFont.atlasTile(atlasPixels, opt);
 	}
 
 	private function uploadPixels():Void {
 		if (!opt.uploadTexture)
 			return;
-		tile.getTexture().uploadPixels(pixels);
+		FreeTypeFont.uploadAtlas(tile.getTexture(), atlasPixels);
 	}
 
 	private function glyphTile(entry:PackedGlyph):Tile {
